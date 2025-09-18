@@ -1,0 +1,53 @@
+name: Daily Nutrition Analysis
+
+on:
+  schedule:
+    # Ejecutar todos los días a las 2:00 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Permite ejecutar manualmente
+
+jobs:
+  nutrition-analysis:
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./nutrivium
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './nutrivium/package-lock.json'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Create .env file
+        run: |
+          echo "NOTION_API_KEY=${{ secrets.NOTION_API_KEY }}" >> .env
+          echo "NOTION_DATABASE_ID=${{ secrets.NOTION_DATABASE_ID }}" >> .env
+          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+          echo "OPENAI_MODEL=gpt-5" >> .env
+          echo "DATABASE_URL=file:./nutrivium.db" >> .env
+          echo "LOG_LEVEL=info" >> .env
+          echo "APP_NAME=nutrivium" >> .env
+          echo "APP_VERSION=0.0.1" >> .env
+      
+      - name: Run nutrition analysis
+        run: npm run script:analyze
+        env:
+          NODE_ENV: production
+      
+      - name: Upload logs (if any)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-logs
+          path: ./nutrivium/*.log
+          retention-days: 7

@@ -5,8 +5,8 @@ yarn-debug.log*
 yarn-error.log*
 
 # Production builds
-/dist
-/build
+**/dist
+**/build
 
 # Environment variables
 .env
@@ -64,3 +64,4 @@ tmp/
 
 # Optional REPL history
 .node_repl_history
+

@@ -19,3 +19,4 @@ El proyecto está diseñado como un sistema modular escalable, donde cada compon
 ---
 
 *"The Citadel stands, after all these years."* - Mass Effect
+

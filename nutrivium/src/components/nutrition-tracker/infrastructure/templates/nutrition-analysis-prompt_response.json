@@ -1,0 +1,90 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "nutrition_analysis",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "calories": {
+          "type": "object",
+          "properties": {
+            "totalCalories": { "type": "number" },
+            "caloriesRange": {
+              "type": "object",
+              "properties": {
+                "min": { "type": "number" },
+                "max": { "type": "number" }
+              },
+              "required": ["min", "max"],
+              "additionalProperties": false
+            },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "required": ["totalCalories", "caloriesRange", "confidence"],
+          "additionalProperties": false
+        },
+        "nutritionalCategories": {
+          "type": "object",
+          "properties": {
+            "vegetables": {
+              "type": "object",
+              "properties": {
+                "present": { "type": "boolean" },
+                "portion": { "type": "string", "enum": ["alta", "media", "baja"] },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              },
+              "required": ["present", "portion", "confidence"],
+              "additionalProperties": false
+            },
+            "fruits": {
+              "type": "object",
+              "properties": {
+                "present": { "type": "boolean" },
+                "portion": { "type": "string", "enum": ["alta", "media", "baja"] },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              },
+              "required": ["present", "portion", "confidence"],
+              "additionalProperties": false
+            },
+            "proteins": {
+              "type": "object",
+              "properties": {
+                "present": { "type": "boolean" },
+                "portion": { "type": "string", "enum": ["alta", "media", "baja"] },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              },
+              "required": ["present", "portion", "confidence"],
+              "additionalProperties": false
+            },
+            "sugars": {
+              "type": "object",
+              "properties": {
+                "present": { "type": "boolean" },
+                "portion": { "type": "string", "enum": ["alta", "media", "baja"] },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              },
+              "required": ["present", "portion", "confidence"],
+              "additionalProperties": false
+            },
+            "processedFoods": {
+              "type": "object",
+              "properties": {
+                "present": { "type": "boolean" },
+                "portion": { "type": "string", "enum": ["alta", "media", "baja"] },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              },
+              "required": ["present", "portion", "confidence"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["vegetables", "fruits", "proteins", "sugars", "processedFoods"],
+          "additionalProperties": false
+        },
+        "analysisNotes": { "type": "string" }
+      },
+      "required": ["calories", "nutritionalCategories", "analysisNotes"],
+      "additionalProperties": false
+    }
+  }
+}

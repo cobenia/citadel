@@ -23,6 +23,7 @@ Proyecto Cobenia/Fructus - Sistema de análisis financiero con Clean Architectur
 - Implementaciones con sufijo del proveedor (ej: `SecFeedScraperApify`)
 - Entidades descriptivas (ej: `SecDocument`, `Company`)
 - Enums con prefijo del dominio (ej: `SecFormType`)
+- **NUNCA usar imports relativos** - siempre usar alias `@/` que apunta a `src/`
 - Constantes en UPPER_SNAKE_CASE
 - Usar async/await, nunca Promises encadenadas
 - Usar Promise.all() para operaciones paralelas

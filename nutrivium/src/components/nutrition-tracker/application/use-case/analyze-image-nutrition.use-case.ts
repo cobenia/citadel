@@ -1,7 +1,7 @@
 import { injectable, inject } from 'inversify';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '@/shared/domain/logger/logger';
-import { NotionRepository } from '../../domain/repository/notion.repository';
+import { NotionRepository, NotionImageData } from '../../domain/repository/notion.repository';
 import { NutritionAnalyzerService } from '../../domain/service/nutrition-analyzer.service';
 import { NutritionAnalysisRepository } from '../../domain/repository/nutrition-analysis.repository';
 import { NutritionAnalysis } from '../../domain/entity/nutrition-analysis.entity';
@@ -23,70 +23,78 @@ export class AnalyzeImageNutritionUseCase {
     });
 
     try {
-      // 1. Obtener imágenes desde Notion
-      const imageDataRaw = request.pageId 
-        ? [await this.notionRepository.getImageFromPage(request.pageId)]
-        : await this.notionRepository.getImagesFromDatabase(request.databaseId, request.limit);
+      // 1. Obtener pageIds pendientes
+      const pageIds = request.pageId 
+        ? [request.pageId]
+        : await this.notionRepository.getPendingPageIds(request.databaseId, request.limit);
 
-      // Filtrar valores null
-      const imageData = imageDataRaw.filter(data => data !== null);
-
-      if (imageData.length === 0) {
-        logger.warn('⚠️ No se encontraron imágenes para analizar');
+      if (pageIds.length === 0) {
+        logger.warn('⚠️ No se encontraron páginas para analizar');
         return [];
       }
 
-      logger.info('📄 Imágenes obtenidas desde Notion', { count: imageData.length });
+      logger.info('📄 Páginas pendientes obtenidas', { count: pageIds.length });
 
       const results: AnalyzeNutritionResponseDto[] = [];
 
-      // 2. Procesar cada imagen
-      for (const data of imageData) {
+      // 2. Procesar cada página
+      for (const pageId of pageIds) {
         try {
           // Verificar si ya existe análisis para esta página
-          const existingAnalysis = await this.analysisRepository.findByNotionPageId(data.pageId);
+          const existingAnalysis = await this.analysisRepository.findByNotionPageId(pageId);
           if (existingAnalysis) {
-            logger.info('✅ Análisis ya existe para página', { pageId: data.pageId });
+            logger.info('✅ Análisis ya existe para página', { pageId });
             results.push(this.mapToDto(existingAnalysis));
             continue;
           }
 
-          // 3. Analizar imagen con OpenAI incluyendo información adicional
-          logger.info('🔍 Analizando imagen con OpenAI', { 
-            pageId: data.pageId,
-            imageUrl: data.imageUrl,
-            hasAdditionalInfo: !!data.additionalInfo
+          // Obtener TODAS las imágenes de la página
+          const imageData = await this.notionRepository.getAllImagesFromPage(pageId);
+          
+          if (!imageData || imageData.images.length === 0) {
+            logger.warn('⚠️ No se encontraron imágenes en la página', { pageId });
+            continue;
+          }
+
+          // Analizar todas las imágenes en conjunto (funciona para 1 o más imágenes)
+          logger.info('🔍 Analizando imágenes', { 
+            pageId,
+            totalImages: imageData.images.length 
           });
 
-          const analysisResult = await this.nutritionAnalyzer.analyzeImageNutritionWithContext(
-            data.imageBuffer,
-            data.imageUrl,
-            data.extractedDateTime,
-            data.additionalInfo || ''
+          const analysisResult = await this.nutritionAnalyzer.analyzeImagesNutrition(
+            imageData.images,
+            imageData.extractedDateTime,
+            imageData.additionalInfo || ''
           );
+          
+          const analysisNotes = imageData.images.length > 1 
+            ? `Análisis combinado de ${imageData.images.length} imágenes: ${analysisResult.analysisNotes}`
+            : analysisResult.analysisNotes;
 
-          // 4. Crear entidad de análisis nutricional
+          // 3. Crear entidad de análisis nutricional
           const now = new Date();
           const nutritionAnalysis = new NutritionAnalysis(
             uuidv4(),
             now,
             now,
-            data.imageUrl,
-            data.extractedDateTime,
+            imageData.images[0].imageUrl, // URL representativa
+            imageData.extractedDateTime,
             analysisResult.calories,
             analysisResult.nutritionalCategories,
-            analysisResult.analysisNotes,
-            data.pageId
+            analysisNotes,
+            pageId
           );
 
-          // 5. Persistir análisis localmente
+          // 4. Persistir análisis localmente
           const savedAnalysis = await this.analysisRepository.save(nutritionAnalysis);
           logger.info('💾 Análisis guardado localmente', { 
             id: savedAnalysis.id,
-            pageId: data.pageId 
+            pageId,
+            totalImages: imageData.images.length
           });
 
-          // 6. Actualizar página en Notion con resultados
+          // 5. Actualizar página en Notion
           const presentCategories: string[] = [];
           const categories = analysisResult.nutritionalCategories;
           if (categories.vegetables.present) presentCategories.push(`Verduras (${categories.vegetables.portion})`);
@@ -96,30 +104,30 @@ export class AnalyzeImageNutritionUseCase {
           if (categories.processedFoods.present) presentCategories.push(`Procesados (${categories.processedFoods.portion})`);
           
           await this.notionRepository.updatePageWithNutritionAnalysis({
-            pageId: data.pageId,
+            pageId,
             calories: analysisResult.calories.totalCalories,
             nutrients: presentCategories.length > 0 ? presentCategories : ['Sin categorías identificadas'],
-            analysisNotes: String(analysisResult.analysisNotes || 'Sin notas adicionales'),
-            extractedDateTime: data.extractedDateTime // Fecha EXIF extraída
+            analysisNotes: String(analysisNotes || 'Sin notas adicionales'),
+            extractedDateTime: imageData.extractedDateTime
           });
 
-          logger.info('✅ Página de Notion actualizada', { pageId: data.pageId });
+          logger.info('✅ Página de Notion actualizada', { pageId });
 
           results.push(this.mapToDto(savedAnalysis));
 
         } catch (error) {
-          logger.error('❌ Error procesando imagen', { 
-            pageId: data.pageId,
+          logger.error('❌ Error procesando página', { 
+            pageId,
             error: error instanceof Error ? error.message : 'Unknown error'
           });
-          // Continuar con la siguiente imagen en caso de error
+          // Continuar con la siguiente página en caso de error
           continue;
         }
       }
 
       logger.info('🏁 Análisis nutricional completado', { 
         totalProcessed: results.length,
-        totalImages: imageData.length 
+        totalPages: pageIds.length 
       });
 
       return results;

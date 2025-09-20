@@ -25,9 +25,9 @@ export class NotionRepositoryImpl implements NotionRepository {
     });
   }
 
-  async getImagesFromDatabase(databaseId: string, limit = 10): Promise<NotionImageData[]> {
+  async getPendingPageIds(databaseId: string, limit = 10): Promise<string[]> {
     try {
-      logger.info('🔍 Obteniendo imágenes desde base de datos de Notion', { 
+      logger.info('🔍 Obteniendo páginas pendientes desde base de datos de Notion', { 
         databaseId,
         limit 
       });
@@ -46,26 +46,10 @@ export class NotionRepositoryImpl implements NotionRepository {
 
       logger.info('📄 Páginas pendientes obtenidas desde Notion', { count: response.results.length });
 
-      const imageDataPromises = response.results.map(async (page: any) => {
-        try {
-          return await this.extractImageDataFromPage(page);
-        } catch (error) {
-          logger.warn('⚠️ Error extrayendo imagen de página', { 
-            pageId: page.id,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          });
-          return null;
-        }
-      });
-
-      const imageData = (await Promise.all(imageDataPromises))
-        .filter((data): data is NotionImageData => data !== null);
-
-      logger.info('✅ Imágenes extraídas de Notion', { count: imageData.length });
-      return imageData;
+      return response.results.map((page: any) => page.id);
 
     } catch (error) {
-      logger.error('❌ Error obteniendo imágenes desde Notion', {
+      logger.error('❌ Error obteniendo páginas pendientes desde Notion', {
         databaseId,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -73,15 +57,15 @@ export class NotionRepositoryImpl implements NotionRepository {
     }
   }
 
-  async getImageFromPage(pageId: string): Promise<NotionImageData | null> {
+  async getAllImagesFromPage(pageId: string): Promise<NotionImageData | null> {
     try {
-      logger.info('🔍 Obteniendo imagen desde página de Notion', { pageId });
+      logger.info('🔍 Obteniendo TODAS las imágenes desde página de Notion', { pageId });
 
       const page = await this.notion.pages.retrieve({ page_id: pageId });
-      return await this.extractImageDataFromPage(page);
+      return await this.extractAllImagesDataFromPage(page);
 
     } catch (error) {
-      logger.error('❌ Error obteniendo imagen desde página', {
+      logger.error('❌ Error obteniendo todas las imágenes desde página', {
         pageId,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -212,108 +196,147 @@ export class NotionRepositoryImpl implements NotionRepository {
     }
   }
 
-  async getPendingAnalysisPages(databaseId: string): Promise<NotionImageData[]> {
-    try {
-      logger.info('🔍 Obteniendo páginas pendientes de análisis', { databaseId });
 
-      // Usar el mismo filtro que getImagesFromDatabase
-      return this.getImagesFromDatabase(databaseId);
 
-    } catch (error) {
-      logger.error('❌ Error obteniendo páginas pendientes', {
-        databaseId,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-      throw error;
-    }
-  }
 
-  private async extractImageDataFromPage(page: any): Promise<NotionImageData | null> {
+
+  private async extractAllImagesDataFromPage(page: any): Promise<NotionImageData | null> {
     try {
       const properties = (page as any).properties;
-      
-      // Buscar archivos adjuntos en la propiedad "Foto" primero
-      let imageUrl: string | null = null;
-      let additionalInfo = '';
+      const images: { imageUrl: string; imageBuffer: Buffer }[] = [];
+      let extractedDateTime: Date | null = null;
 
-      // Buscar específicamente en la propiedad "Foto" 
+      // Buscar TODAS las imágenes en la propiedad "Foto"
       if (properties['Foto'] && properties['Foto'].type === 'files' && properties['Foto'].files?.length > 0) {
-        const file = properties['Foto'].files[0];
-        if (file.file?.url || file.external?.url) {
-          imageUrl = file.file?.url || file.external?.url;
-          logger.info('📎 Foto encontrada en propiedad Foto', { fileName: file.name });
+        for (const file of properties['Foto'].files) {
+          if (file.file?.url || file.external?.url) {
+            const imageUrl = file.file?.url || file.external?.url;
+            logger.info('📎 Foto encontrada en propiedad Foto', { fileName: file.name });
+            
+            try {
+              const originalBuffer = await this.downloadOriginalImage(imageUrl);
+              
+              if (!extractedDateTime) {
+                extractedDateTime = await this.extractImageCreationDate(originalBuffer);
+              }
+              
+              const imageBuffer = await this.optimizeImage(originalBuffer);
+              images.push({ imageUrl, imageBuffer });
+            } catch (error) {
+              logger.warn('⚠️ Error procesando imagen', { 
+                imageUrl,
+                error: error instanceof Error ? error.message : 'Unknown error'
+              });
+            }
+          }
         }
       }
 
-      // Si no se encuentra en "Foto", buscar en otras propiedades de archivos
-      if (!imageUrl) {
-        for (const [propName, prop] of Object.entries(properties)) {
-          if ((prop as any).type === 'files' && (prop as any).files?.length > 0) {
-            const file = (prop as any).files[0];
+      // Buscar en otras propiedades de archivos
+      for (const [propName, prop] of Object.entries(properties)) {
+        if (propName === 'Foto') continue;
+        
+        if ((prop as any).type === 'files' && (prop as any).files?.length > 0) {
+          for (const file of (prop as any).files) {
             if (file.file?.url || file.external?.url) {
-              imageUrl = file.file?.url || file.external?.url;
+              const imageUrl = file.file?.url || file.external?.url;
               logger.info('📎 Archivo encontrado en propiedad', { propName, fileName: file.name });
-              break;
+              
+              try {
+                const originalBuffer = await this.downloadOriginalImage(imageUrl);
+                
+                if (!extractedDateTime) {
+                  extractedDateTime = await this.extractImageCreationDate(originalBuffer);
+                }
+                
+                const imageBuffer = await this.optimizeImage(originalBuffer);
+                images.push({ imageUrl, imageBuffer });
+              } catch (error) {
+                logger.warn('⚠️ Error procesando imagen', { 
+                  imageUrl,
+                  error: error instanceof Error ? error.message : 'Unknown error'
+                });
+              }
             }
           }
         }
       }
 
-      // Si no se encuentra en propiedades, buscar en blocks (contenido de la página)
-      if (!imageUrl) {
-        const blocks = await this.notion.blocks.children.list({
-          block_id: page.id
-        });
+      // Buscar en blocks (contenido de la página)
+      const blocks = await this.notion.blocks.children.list({
+        block_id: page.id
+      });
 
-        for (const block of blocks.results) {
-          if ((block as any).type === 'image') {
-            const imageBlock = block as any;
-            imageUrl = imageBlock.image.file?.url || imageBlock.image.external?.url;
-            if (imageUrl) {
-              logger.info('🖼️ Imagen encontrada en bloque', { blockId: block.id });
-              break;
+      for (const block of blocks.results) {
+        if ((block as any).type === 'image') {
+          const imageBlock = block as any;
+          const imageUrl = imageBlock.image.file?.url || imageBlock.image.external?.url;
+          if (imageUrl) {
+            logger.info('🖼️ Imagen encontrada en bloque', { blockId: block.id });
+            
+            try {
+              const originalBuffer = await this.downloadOriginalImage(imageUrl);
+              
+              if (!extractedDateTime) {
+                extractedDateTime = await this.extractImageCreationDate(originalBuffer);
+              }
+              
+              const imageBuffer = await this.optimizeImage(originalBuffer);
+              images.push({ imageUrl, imageBuffer });
+            } catch (error) {
+              logger.warn('⚠️ Error procesando imagen', { 
+                imageUrl,
+                error: error instanceof Error ? error.message : 'Unknown error'
+              });
             }
           }
-          // También buscar en archivos adjuntos en blocks
-          else if ((block as any).type === 'file') {
-            const fileBlock = block as any;
-            const fileUrl = fileBlock.file.file?.url || fileBlock.file.external?.url;
-            if (fileUrl && this.isImageFile(fileUrl)) {
-              imageUrl = fileUrl;
-              logger.info('📁 Archivo de imagen encontrado en bloque', { blockId: block.id });
-              break;
+        }
+        else if ((block as any).type === 'file') {
+          const fileBlock = block as any;
+          const fileUrl = fileBlock.file.file?.url || fileBlock.file.external?.url;
+          if (fileUrl && this.isImageFile(fileUrl)) {
+            logger.info('📁 Archivo de imagen encontrado en bloque', { blockId: block.id });
+            
+            try {
+              const originalBuffer = await this.downloadOriginalImage(fileUrl);
+              
+              if (!extractedDateTime) {
+                extractedDateTime = await this.extractImageCreationDate(originalBuffer);
+              }
+              
+              const imageBuffer = await this.optimizeImage(originalBuffer);
+              images.push({ imageUrl: fileUrl, imageBuffer });
+            } catch (error) {
+              logger.warn('⚠️ Error procesando imagen', { 
+                imageUrl: fileUrl,
+                error: error instanceof Error ? error.message : 'Unknown error'
+              });
             }
           }
         }
       }
 
-      if (!imageUrl) {
-        logger.debug('🔍 No se encontró imagen en la página', { pageId: page.id });
+      if (images.length === 0) {
+        logger.debug('🔍 No se encontraron imágenes en la página', { pageId: page.id });
         return null;
       }
 
-      // Extraer información adicional de las propiedades para contexto
-      additionalInfo = this.extractAdditionalInfo(properties);
+      const additionalInfo = this.extractAdditionalInfo(properties);
 
-      // Descargar imagen original para extraer EXIF
-      const originalBuffer = await this.downloadOriginalImage(imageUrl);
-      
-      // Extraer fecha EXIF de la imagen original
-      const extractedDateTime = await this.extractImageCreationDate(originalBuffer);
-      
-      // Optimizar imagen para procesamiento
-      const imageBuffer = await this.optimizeImage(originalBuffer);
+      logger.info('✅ Múltiples imágenes extraídas', { 
+        pageId: page.id, 
+        totalImages: images.length 
+      });
 
       return {
-        imageUrl,
+        images,
         extractedDateTime,
         pageId: page.id,
-        imageBuffer,
         additionalInfo
       };
 
     } catch (error) {
-      logger.error('❌ Error extrayendo datos de imagen', {
+      logger.error('❌ Error extrayendo múltiples imágenes', {
         pageId: page.id,
         error: error instanceof Error ? error.message : 'Unknown error'
       });

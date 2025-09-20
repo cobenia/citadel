@@ -8,24 +8,14 @@ export interface NutritionAnalysisResult {
 
 export interface NutritionAnalyzerService {
   /**
-   * Analiza una imagen para extraer información nutricional
-   * @param imageBuffer Buffer de la imagen a analizar
-   * @param imageUrl URL de la imagen para referencia
-   * @returns Análisis nutricional completo
-   */
-  analyzeImageNutrition(imageBuffer: Buffer, imageUrl: string): Promise<NutritionAnalysisResult>;
-
-  /**
-   * Analiza una imagen con contexto adicional
-   * @param imageBuffer Buffer de la imagen
-   * @param imageUrl URL de la imagen
+   * Analiza múltiples imágenes en conjunto (varios platos de una comida)
+   * @param images Array de buffers e URLs de imágenes
    * @param extractedDateTime Fecha y hora extraída de metadatos
    * @param additionalInfo Información adicional de contexto de la página
-   * @returns Análisis nutricional con contexto temporal y adicional
+   * @returns Análisis nutricional combinado de todas las imágenes
    */
-  analyzeImageNutritionWithContext(
-    imageBuffer: Buffer, 
-    imageUrl: string, 
+  analyzeImagesNutrition(
+    images: { imageBuffer: Buffer; imageUrl: string }[],
     extractedDateTime: Date | null,
     additionalInfo?: string
   ): Promise<NutritionAnalysisResult>;

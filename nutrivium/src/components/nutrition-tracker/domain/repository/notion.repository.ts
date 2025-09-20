@@ -1,9 +1,11 @@
 export interface NotionImageData {
-  imageUrl: string;
+  images: {
+    imageUrl: string;
+    imageBuffer: Buffer;
+  }[];
   extractedDateTime: Date | null;
   pageId: string;
-  imageBuffer: Buffer;
-  additionalInfo?: string; // Información adicional extraída de la página
+  additionalInfo?: string;
 }
 
 export interface NotionUpdateData {
@@ -16,19 +18,19 @@ export interface NotionUpdateData {
 
 export interface NotionRepository {
   /**
-   * Obtiene imágenes desde una base de datos de Notion
+   * Obtiene IDs de páginas pendientes desde una base de datos de Notion
    * @param databaseId ID de la base de datos de Notion
-   * @param limit Límite de imágenes a procesar
-   * @returns Array de datos de imágenes con metadatos
+   * @param limit Límite de páginas a procesar
+   * @returns Array de IDs de páginas pendientes
    */
-  getImagesFromDatabase(databaseId: string, limit?: number): Promise<NotionImageData[]>;
+  getPendingPageIds(databaseId: string, limit?: number): Promise<string[]>;
 
   /**
-   * Obtiene una imagen específica desde una página de Notion
+   * Obtiene TODAS las imágenes desde una página de Notion
    * @param pageId ID de la página de Notion
-   * @returns Datos de la imagen con metadatos
+   * @returns Datos de todas las imágenes con metadatos
    */
-  getImageFromPage(pageId: string): Promise<NotionImageData | null>;
+  getAllImagesFromPage(pageId: string): Promise<NotionImageData | null>;
 
   /**
    * Extrae fecha y hora de los metadatos de la imagen o página
@@ -43,11 +45,4 @@ export interface NotionRepository {
    * @returns true si se actualizó correctamente
    */
   updatePageWithNutritionAnalysis(updateData: NotionUpdateData): Promise<boolean>;
-
-  /**
-   * Obtiene páginas pendientes de análisis nutricional
-   * @param databaseId ID de la base de datos
-   * @returns Array de páginas sin analizar
-   */
-  getPendingAnalysisPages(databaseId: string): Promise<NotionImageData[]>;
 }

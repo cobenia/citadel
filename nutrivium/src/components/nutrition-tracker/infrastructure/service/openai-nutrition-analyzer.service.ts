@@ -32,72 +32,69 @@ export class OpenAINutritionAnalyzerServiceImpl implements NutritionAnalyzerServ
     });
   }
 
-  async analyzeImageNutrition(imageBuffer: Buffer, imageUrl: string): Promise<NutritionAnalysisResult> {
-    return this.analyzeImageNutritionWithContext(imageBuffer, imageUrl, null, '');
-  }
-
-  async analyzeImageNutritionWithContext(
-    imageBuffer: Buffer, 
-    imageUrl: string, 
+  async analyzeImagesNutrition(
+    images: { imageBuffer: Buffer; imageUrl: string }[],
     extractedDateTime: Date | null,
     additionalInfo: string = ''
   ): Promise<NutritionAnalysisResult> {
     try {
-      logger.info('🍎 Analizando imagen con OpenAI', { 
-        imageUrl: imageUrl.substring(0, 50) + '...',
+      logger.info('🍎 Analizando imágenes con OpenAI', { 
+        totalImages: images.length,
         hasDateTime: !!extractedDateTime,
         hasAdditionalInfo: !!additionalInfo,
         model: this.config.openai.model
       });
 
-      // Convertir buffer a base64
-      const base64Image = imageBuffer.toString('base64');
+      const base64Images = images.map(img => img.imageBuffer.toString('base64'));
       
-      // Construir contextos
       const timeContext = extractedDateTime 
-        ? `La imagen fue tomada el ${extractedDateTime.toLocaleDateString()} a las ${extractedDateTime.toLocaleTimeString()}.`
+        ? `Las imágenes fueron tomadas el ${extractedDateTime.toLocaleDateString()} a las ${extractedDateTime.toLocaleTimeString()}.`
         : '';
       
       const infoContext = additionalInfo 
         ? `Información adicional de contexto: ${additionalInfo}`
         : '';
 
-      // Obtener prompt desde template
-      const prompt = this.templateService.getNutritionAnalysisPrompt(timeContext, infoContext);
+      // Usar prompt específico según el número de imágenes
+      const prompt = images.length > 1 
+        ? this.templateService.getMultipleImagesNutritionAnalysisPrompt(images.length, timeContext, infoContext)
+        : this.templateService.getNutritionAnalysisPrompt(timeContext, infoContext);
+
+      const content = [
+        {
+          type: 'text' as const,
+          text: prompt
+        },
+        ...base64Images.map(base64Image => ({
+          type: 'image_url' as const,
+          image_url: {
+            url: `data:image/jpeg;base64,${base64Image}`,
+            detail: 'high' as const
+          }
+        }))
+      ];
 
       const response = await this.openai.chat.completions.create({
         model: this.config.openai.model,
         messages: [
           {
             role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: prompt
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:image/jpeg;base64,${base64Image}`,
-                  detail: 'high'
-                }
-              }
-            ]
+            content
           }
         ],
-        ...(this.config.openai.model.includes('gpt-5') ? {} : { temperature: 0.2 }), // gpt-5 no soporta temperature personalizada
+        ...(this.config.openai.model.includes('gpt-5') ? {} : { temperature: 0.2 }),
         response_format: this.templateService.getNutritionAnalysisResponseFormat()
       });
 
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
+      const responseContent = response.choices[0]?.message?.content;
+      if (!responseContent) {
         throw new Error('No se recibió respuesta de OpenAI');
       }
 
-      // Parsear respuesta JSON
-      const analysisData = this.parseOpenAIResponse(content);
+      const analysisData = this.parseOpenAIResponse(responseContent);
       
       logger.info('✅ Análisis nutricional completado', {
+        totalImages: images.length,
         totalCalories: analysisData.calories.totalCalories,
         categoriesPresent: this.countPresentCategories(analysisData.nutritionalCategories),
         avgConfidence: this.calculateAverageConfidence(analysisData),
@@ -108,11 +105,10 @@ export class OpenAINutritionAnalyzerServiceImpl implements NutritionAnalyzerServ
 
     } catch (error) {
       logger.error('❌ Error en análisis nutricional con OpenAI', {
-        imageUrl: imageUrl.substring(0, 50) + '...',
+        totalImages: images.length,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
       
-      // Devolver análisis de fallback en caso de error
       return this.getFallbackAnalysis();
     }
   }

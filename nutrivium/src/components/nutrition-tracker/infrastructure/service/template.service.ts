@@ -46,6 +46,25 @@ export class TemplateService {
       .replace('{{infoContext}}', infoContext);
   }
 
+  getMultipleImagesNutritionAnalysisPrompt(imageCount: number, timeContext: string, infoContext: string): string {
+    const template = this.templates.get('nutrition-analysis');
+    if (!template) {
+      throw new Error('Template nutrition-analysis no encontrado');
+    }
+
+    const multipleImagesPrefix = `IMPORTANTE: Estoy proporcionando ${imageCount} imágenes que representan DIFERENTES PLATOS O ELEMENTOS de una MISMA COMIDA. 
+Analiza TODAS las imágenes en conjunto y proporciona un análisis nutricional COMBINADO que incluya todos los alimentos mostrados en todas las imágenes.
+Las ${imageCount} imágenes son parte de la misma comida/sesión alimentaria.
+
+`;
+
+    const modifiedTemplate = multipleImagesPrefix + template;
+
+    return modifiedTemplate
+      .replace('{{timeContext}}', timeContext)
+      .replace('{{infoContext}}', infoContext);
+  }
+
   getNutritionAnalysisResponseFormat(): any {
     const responseFormat = this.responseFormats.get('nutrition-analysis');
     if (!responseFormat) {

@@ -3,12 +3,14 @@
 Analiza esta imagen de comida enfocándote en las **categorías nutricionales principales** para análisis de hábitos alimentarios.
 
 {{timeContext}}
+
+Notas adicionales:
 {{infoContext}}
 
 ## Instrucciones específicas:
 
 ### Objetivo del análisis:
-Este análisis es para rastrear hábitos alimentarios diarios, NO para inventario detallado de ingredientes.
+Este análisis es para rastrear hábitos alimentarios diarios, NO para inventario detallado de ingredientes. Cuando hay múltiples platos en la imagen o múltiples imágenes, analiza en conjunto la comida, ya que son varios platos de la misma comida. Si hay notas de que es para 2 personas, considera que hay que dividir entre 2 para los cálculos de calorías, etc.
 
 ### Para cada categoría nutricional evalúa:
 

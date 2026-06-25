@@ -25,9 +25,14 @@ export class OpenAINutritionAnalyzerServiceImpl implements NutritionAnalyzerServ
   ) {
     this.config = config;
     this.templateService = templateService;
-    this.openai = new OpenAI({ apiKey: this.config.openai.apiKey });
-    
+    // baseUrl vacía = API oficial de OpenAI; con valor enruta al proxy LiteLLM.
+    this.openai = new OpenAI({
+      apiKey: this.config.openai.apiKey,
+      ...(this.config.openai.baseUrl ? { baseURL: this.config.openai.baseUrl } : {})
+    });
+
     logger.info('🤖 OpenAI NutritionAnalyzer inicializado', {
+      baseUrl: this.config.openai.baseUrl || 'default (OpenAI API)',
       model: this.config.openai.model
     });
   }

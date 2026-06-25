@@ -5,6 +5,7 @@ export interface Config {
   };
   openai: {
     apiKey: string;
+    baseUrl: string;
     model: string;
   };
   logging: {

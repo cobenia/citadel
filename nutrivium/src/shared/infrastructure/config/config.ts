@@ -32,7 +32,10 @@ export function loadConfig(): Config {
     },
     openai: {
       apiKey: process.env.OPENAI_API_KEY!,
-      model: process.env.OPENAI_MODEL || 'gpt-5',
+      // Por defecto enruta al proxy LiteLLM del NAS (OpenAI-compatible).
+      // Si OPENAI_BASE_URL está vacía, el SDK usa la API oficial de OpenAI.
+      baseUrl: process.env.OPENAI_BASE_URL || 'http://litellm:4000/v1',
+      model: process.env.OPENAI_MODEL || 'gpt-5.5',
     },
     logging: {
       level: process.env.LOG_LEVEL || 'info',
@@ -46,6 +49,7 @@ export function loadConfig(): Config {
   logger.info('✅ Configuración cargada exitosamente', {
     notionApiKey: config.notion.apiKey.substring(0, 8) + '...',
     notionDatabaseId: config.notion.databaseId.substring(0, 8) + '...',
+    openaiBaseUrl: config.openai.baseUrl,
     openaiModel: config.openai.model,
     logLevel: config.logging.level,
     appName: config.app.name,
